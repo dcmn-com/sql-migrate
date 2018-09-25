@@ -557,3 +557,22 @@ func (s *SqliteMigrateSuite) TestExecWithUnknownMigrationInDatabase(c *C) {
 	_, err = s.DbMap.Exec("SELECT age FROM people")
 	c.Assert(err, NotNil)
 }
+
+// TestSaveDownMigration makes sure that down migration saved in db
+func (s *SqliteMigrateSuite) TestSaveDownMigration(c *C) {
+	migrations := &MemoryMigrationSource{
+		Migrations: sqliteMigrations[:1],
+	}
+
+	SetTable(`migrations`)
+
+	n, err := Exec(s.Db, "sqlite3", migrations, Up)
+	c.Assert(err, IsNil)
+	c.Assert(n, Equals, 1)
+
+	// Can use table now
+	d, err := s.DbMap.SelectStr("SELECT down_migration FROM migrations WHERE down_migration IS NOT NULL")
+	c.Assert(err, IsNil)
+	c.Assert(d, Equals, sqliteMigrations[0].Down[0])
+
+}
