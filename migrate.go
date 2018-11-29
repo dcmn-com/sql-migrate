@@ -23,6 +23,7 @@ type MigrationDirection int
 const (
 	Up MigrationDirection = iota
 	Down
+	Sync
 )
 
 var tableName = "gorp_migrations"
@@ -88,6 +89,7 @@ type Migration struct {
 	Id   string
 	Up   []string
 	Down []string
+	Sync []string
 
 	DisableTransactionUp   bool
 	DisableTransactionDown bool
@@ -426,6 +428,17 @@ func ExecMax(db *sql.DB, dialect string, m MigrationSource, dir MigrationDirecti
 
 				return applied, newTxError(migration, err)
 			}
+		case Sync:
+			_, err := executor.Delete(&MigrationRecord{
+				Id: migration.Id,
+			})
+			if err != nil {
+				if trans, ok := executor.(*gorp.Transaction); ok {
+					trans.Rollback()
+				}
+
+				return applied, newTxError(migration, err)
+			}
 		default:
 			panic("Not possible")
 		}
@@ -458,6 +471,23 @@ func PlanMigration(db *sql.DB, dialect string, m MigrationSource, dir MigrationD
 	_, err = dbMap.Select(&migrationRecords, fmt.Sprintf("SELECT * FROM %s", dbMap.Dialect.QuotedTableForQuery(schemaName, tableName)))
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if dir == Sync {
+		result := make([]*PlannedMigration, 0)
+
+		// if we are downgrading our main app, apply the downs of the
+		// new migrations that have been run. We know a migration is no
+		// longer relevant if the file that it ran from no longer exists
+		migrationsToRemove := ToRemove(migrations, migrationRecords)
+		for _, v := range migrationsToRemove {
+			result = append(result, &PlannedMigration{
+				Migration: v,
+				Queries:   v.Sync,
+			})
+		}
+
+		return result, dbMap, nil
 	}
 
 	// Sort migrations that have been run by Id.
@@ -621,6 +651,35 @@ func ToCatchup(migrations, existingMigrations []*Migration, lastRun *Migration) 
 		}
 	}
 	return missing
+}
+
+// Filter a slice of migrations into ones that should be removed. A migrations
+// should be removed if the .sql file no longer exists or the  MigrationSource
+// no longer has the migration but it still exists in the DB. This can happen if
+// an older version of the Application is deployed in a rollback scenario
+func ToRemove(migrations []*Migration, migrationRecords []MigrationRecord) []*Migration {
+	toRemove := make([]*Migration, 0)
+
+	for i := len(migrationRecords) - 1; i >= 0; i-- {
+		mr := migrationRecords[i]
+
+		var migrationExists = false
+		for _, m := range migrations {
+			if m.Id == mr.Id {
+				migrationExists = true
+				break
+			}
+		}
+
+		if !migrationExists {
+			var m Migration
+			m.Id = mr.Id
+			m.Sync = strings.Split(mr.DownMigration, "\n")
+			toRemove = append(toRemove, &m)
+		}
+	}
+
+	return toRemove
 }
 
 func GetMigrationRecords(db *sql.DB, dialect string) ([]*MigrationRecord, error) {
