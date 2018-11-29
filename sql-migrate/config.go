@@ -45,6 +45,7 @@ func ReadConfig() (map[string]*Environment, error) {
 		return nil, err
 	}
 
+	file = []byte(os.ExpandEnv(string(file)))
 	config := make(map[string]*Environment)
 	err = yaml.Unmarshal(file, config)
 	if err != nil {
