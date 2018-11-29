@@ -125,7 +125,6 @@ func (m Migration) VersionInt() int64 {
 
 type PlannedMigration struct {
 	*Migration
-
 	DisableTransaction bool
 	Queries            []string
 }
@@ -137,8 +136,9 @@ func (b byId) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byId) Less(i, j int) bool { return b[i].Less(b[j]) }
 
 type MigrationRecord struct {
-	Id        string    `db:"id"`
-	AppliedAt time.Time `db:"applied_at"`
+	Id            string    `db:"id"`
+	AppliedAt     time.Time `db:"applied_at"`
+	DownMigration string    `db:"down_migration"`
 }
 
 var MigrationDialects = map[string]gorp.Dialect{
@@ -404,8 +404,9 @@ func ExecMax(db *sql.DB, dialect string, m MigrationSource, dir MigrationDirecti
 		switch dir {
 		case Up:
 			err = executor.Insert(&MigrationRecord{
-				Id:        migration.Id,
-				AppliedAt: time.Now(),
+				Id:            migration.Id,
+				AppliedAt:     time.Now(),
+				DownMigration: strings.Join(migration.Down, "\n"),
 			})
 			if err != nil {
 				if trans, ok := executor.(*gorp.Transaction); ok {
@@ -546,9 +547,11 @@ func SkipMax(db *sql.DB, dialect string, m MigrationSource, dir MigrationDirecti
 		}
 
 		err = executor.Insert(&MigrationRecord{
-			Id:        migration.Id,
-			AppliedAt: time.Now(),
+			Id:            migration.Id,
+			AppliedAt:     time.Now(),
+			DownMigration: strings.Join(migration.Down, "\n"),
 		})
+
 		if err != nil {
 			if trans, ok := executor.(*gorp.Transaction); ok {
 				trans.Rollback()
