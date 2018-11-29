@@ -23,6 +23,7 @@ type MigrationDirection int
 const (
 	Up MigrationDirection = iota
 	Down
+	Sync
 )
 
 var tableName = "gorp_migrations"
@@ -88,6 +89,7 @@ type Migration struct {
 	Id   string
 	Up   []string
 	Down []string
+	Sync []string
 
 	DisableTransactionUp   bool
 	DisableTransactionDown bool

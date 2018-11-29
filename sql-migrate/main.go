@@ -28,6 +28,9 @@ func realMain() int {
 			"redo": func() (cli.Command, error) {
 				return &RedoCommand{}, nil
 			},
+			"sync": func() (cli.Command, error) {
+				return &SyncCommand{}, nil
+			},
 			"status": func() (cli.Command, error) {
 				return &StatusCommand{}, nil
 			},
